@@ -610,6 +610,8 @@ namespace HpToolsLauncher.TestRunners
                             ConsoleWriter.WriteErrLine("\t\tThe Controller is still running...");
                             Stopper wlrunStopper = new Stopper(10000);
                             wlrunStopper.Start();
+                            ConsoleWriter.WriteErrLine("killing Controller process");
+                            cleanENV();
                             return;
                         }
                     }
@@ -669,33 +671,11 @@ namespace HpToolsLauncher.TestRunners
             }
             _engine = null;
         }
-
-        void DoTask(Object state)
-        {
-            AutoResetEvent are = (AutoResetEvent) state;
-
-            while (!_scenarioEnded)
-            {
-                //Currently logging events causes controller scenario end event to unregister causing hptoolslauncher to be stuck
-                if (!_scenarioEndedEvent || _summaryDataLogger.IsAnyDataLogged())
-                {
-                    //if all Vusers are in ending state, scenario is finished.
-                    _scenarioEnded = isFinished();
-                    Thread.Sleep(5000);
-                }
-            }
-            are.Set();
-        }
-
-        AutoResetEvent autoEvent = new AutoResetEvent(false);
         
-
         private bool waitForScenario(ref string errorReason)
         {
             ConsoleWriter.WriteLine("Scenario run has started");
-
-            ThreadPool.QueueUserWorkItem(DoTask, autoEvent);
-
+            
             //wait for the scenario to end gracefully:
             int time = _pollingInterval * 1000;
 
@@ -703,17 +683,19 @@ namespace HpToolsLauncher.TestRunners
             {
                 LogDataDuringScenarioExecution();
             }
-            while (_stopWatch.Elapsed <= _perScenarioTimeOutMinutes)
+            while (_stopWatch.Elapsed <= _perScenarioTimeOutMinutes && !_scenarioEnded)
             {   
                 if (_runCancelled())
                 {
                     errorReason = Resources.GeneralTimedOut;
                     return false;
                 }
-                if (autoEvent.WaitOne(time))
+                if (!_scenarioEndedEvent || _summaryDataLogger.IsAnyDataLogged())
                 {
-                    break;
+                    //if all Vusers are in ending state, scenario is finished.
+                    _scenarioEnded = isFinished();
                 }
+                Thread.Sleep(5000);
             }
 
             if (_stopWatch.Elapsed > _perScenarioTimeOutMinutes)
